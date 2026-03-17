@@ -134,14 +134,13 @@ public class SceneManager : MonoBehaviour
         }
     }
 
-    // 신규 오브젝트 생성 (Q)
     void HandleCreateObject()
     {
         if (Input.GetKeyDown(KeyCode.Q))
         {
             // 핵심: 4번째 인자로 presetManager.objectParent를 넣어줍니다.
             GameObject newObj = Instantiate(blockPrefab, new Vector3(0, 0.5f, 0), Quaternion.identity, presetManager.objectParent);
-        
+            
             mover.SetSelectedObject(newObj);
         }
     }
