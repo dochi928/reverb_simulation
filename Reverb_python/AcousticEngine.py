@@ -24,8 +24,8 @@ class ReverbEngineGUI:
         self.direct_delay_sec_r = 0.0
 
         # 기본 경로 설정
-        self.default_sim_dir   = r"C:\Users\82103\Documents\code\reverb\Reverb_unity\Assets\Results"
-        self.default_audio_dir = r"C:\Users\82103\Desktop\성환 관련\Audio"
+        self.default_sim_dir   = ""
+        self.default_audio_dir = ""
 
         self.default_sim_path = self.get_default_sim_path()
         self.sim_data = self.parse_reverb_data(self.default_sim_path)
