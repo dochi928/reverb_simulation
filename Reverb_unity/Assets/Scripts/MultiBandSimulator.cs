@@ -39,10 +39,13 @@ public class MultiBandSimulator : MonoBehaviour
     public float[] eqFrequencies = { 100f, 200f, 400f, 800f, 1600f, 3200f, 6400f };
 
     [Header("Reflection (Per Band)")]
-    public float[] cement_r = { 0.99f, 0.99f, 0.98f, 0.98f, 0.98f, 0.97f, 0.95f };
-    public float[] fabric_r = { 0.95f, 0.85f, 0.70f, 0.55f, 0.40f, 0.30f, 0.20f };
-    public float[] wood_r   = { 0.85f, 0.90f, 0.95f, 0.95f, 0.92f, 0.90f, 0.85f };
-    public float[] glass_r  = { 0.95f, 0.97f, 0.98f, 0.98f, 0.95f, 0.92f, 0.90f };
+    //순서: 100, 200, 400, 800, 1600, 3200, 6400 Hz
+    public float[] cement_r  = { 0.99f, 0.99f, 0.98f, 0.98f, 0.98f, 0.97f, 0.95f };
+    public float[] fabric_r  = { 0.95f, 0.85f, 0.70f, 0.55f, 0.40f, 0.30f, 0.20f };
+    public float[] wood_r    = { 0.85f, 0.90f, 0.95f, 0.95f, 0.92f, 0.90f, 0.85f };
+    public float[] glass_r   = { 0.95f, 0.97f, 0.98f, 0.98f, 0.95f, 0.92f, 0.90f };
+    public float[] plastic_r = { 0.80f, 0.82f, 0.83f, 0.80f, 0.72f, 0.60f, 0.45f };
+    public float[] metal_r   = { 0.97f, 0.97f, 0.96f, 0.96f, 0.95f, 0.94f, 0.93f };
 
     [Header("Air Absorption (Per Band)")]
     public float[] airAbsBands = { 0.0001f, 0.0002f, 0.0005f, 0.0012f, 0.003f, 0.01f, 0.03f };
@@ -103,7 +106,6 @@ public class MultiBandSimulator : MonoBehaviour
 
                 for (int b = 0; b < eqFrequencies.Length; b++)
                 {
-                    // Single 모드일 경우 모든 대역에 800Hz(Index 3) 기준의 공기 흡수와 반사율 적용
                     int targetIdx = (currentMode == SimulationMode.Single) ? 3 : b;
                     float envDecay = (decayDist / (totalDist + decayDist)) * Mathf.Exp(-airAbsBands[targetIdx] * stepDist);
                     float diffRate = (i == 0) ? 0.8f : 0.2f / diffusion_num;
@@ -123,10 +125,12 @@ public class MultiBandSimulator : MonoBehaviour
 
     float[] GetBandCoeffs(string tag)
     {
-        if (tag == "Cement") return cement_r;
-        if (tag == "Fabric") return fabric_r;
-        if (tag == "Wood") return wood_r;
-        if (tag == "Glass") return glass_r;
+        if (tag == "Cement")  return cement_r;
+        if (tag == "Fabric")  return fabric_r;
+        if (tag == "Wood")    return wood_r;
+        if (tag == "Glass")   return glass_r;
+        if (tag == "Plastic") return plastic_r;
+        if (tag == "Metal")   return metal_r;
         return new float[] { 1, 1, 1, 1, 1, 1, 1 };
     }
 
@@ -173,7 +177,7 @@ public class MultiBandSimulator : MonoBehaviour
                     writer.WriteLine("");
                 }
             }
-            else // Single 모드: 800Hz(대표 주파수) 데이터만 저장
+            else
             {
                 writer.WriteLine("800Hz_Standard");
                 foreach (string key in sortedKeys)

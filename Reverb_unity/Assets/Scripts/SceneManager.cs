@@ -1,11 +1,14 @@
 using UnityEngine;
 using TMPro; // TextMeshPro 사용을 위해 필수
 
+public enum SimEngineMode { V2, Multi, Single }
+
 public class SceneManager : MonoBehaviour
 {
     [Header("Core Components")]
     public MoveObject mover;
     public MultiBandSimulator simulator;
+    public SimulatorV2 simulatorV2;
     public PresetManager presetManager;
     public GameObject blockPrefab;
 
@@ -13,6 +16,7 @@ public class SceneManager : MonoBehaviour
     public TextMeshProUGUI modeText;
 
     private int currentRoomIndex = 0;
+    private SimEngineMode currentEngineMode = SimEngineMode.V2;
 
     void Start()
     {
@@ -77,28 +81,72 @@ public class SceneManager : MonoBehaviour
         // 선택 대상 전환 (앰프/채널 직접 선택 모드)
         if (Input.GetKeyDown(KeyCode.Alpha2)) mover.SelectAmp();
         if (Input.GetKeyDown(KeyCode.Alpha3)) mover.SelectChannel();
+        if (Input.GetKeyDown(KeyCode.Alpha4)) mover.SelectRoom();
     }
 
-    // 시뮬레이션 실행 및 모드 전환 (Tab, E, R, Y)
+    // 시뮬레이션 엔진/모드 전환 (Tab): V2 -> Multi -> Single -> V2 ...
     void HandleModeToggle()
     {
         if (Input.GetKeyDown(KeyCode.Tab))
         {
-            if (simulator != null)
+            switch (currentEngineMode)
             {
-                simulator.ToggleMode();
-                UpdateUI();
+                case SimEngineMode.V2:
+                    currentEngineMode = SimEngineMode.Multi;
+                    // MultiBandSimulator를 Multi 모드로 명시
+                    if (simulator != null && simulator.currentMode != SimulationMode.Multi)
+                        simulator.ToggleMode();
+                    break;
+
+                case SimEngineMode.Multi:
+                    currentEngineMode = SimEngineMode.Single;
+                    // MultiBandSimulator를 Single 모드로 전환
+                    if (simulator != null && simulator.currentMode != SimulationMode.Single)
+                        simulator.ToggleMode();
+                    break;
+
+                case SimEngineMode.Single:
+                    currentEngineMode = SimEngineMode.V2;
+                    break;
             }
+            UpdateUI();
         }
     }
 
     void HandleSimulation()
     {
-        if (simulator == null) return;
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            switch (currentEngineMode)
+            {
+                case SimEngineMode.V2:
+                    if (simulatorV2 != null) simulatorV2.RunSimulation();
+                    break;
+                case SimEngineMode.Multi:
+                case SimEngineMode.Single:
+                    if (simulator != null) simulator.RunSimulation();
+                    break;
+            }
+        }
 
-        if (Input.GetKeyDown(KeyCode.E)) simulator.RunSimulation();
-        if (Input.GetKeyDown(KeyCode.R)) simulator.SaveToFile();
-        if (Input.GetKeyDown(KeyCode.Y)) simulator.drawRay = !simulator.drawRay;
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            switch (currentEngineMode)
+            {
+                case SimEngineMode.V2:
+                    if (simulatorV2 != null) simulatorV2.SaveToFile();
+                    break;
+                case SimEngineMode.Multi:
+                case SimEngineMode.Single:
+                    if (simulator != null) simulator.SaveToFile();
+                    break;
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.Y))
+        {
+            if (simulator != null) simulator.drawRay = !simulator.drawRay;
+        }
     }
 
     // 프리셋 시스템 연동 (<, >, P)
@@ -148,9 +196,16 @@ public class SceneManager : MonoBehaviour
     // 화면 상단 UI 텍스트 갱신
     public void UpdateUI()
     {
-        if (modeText != null && simulator != null)
+        if (modeText != null)
         {
-            string modeStr = (simulator.currentMode == SimulationMode.Multi) ? "Multi" : "Single";
+            string modeStr;
+            switch (currentEngineMode)
+            {
+                case SimEngineMode.V2:     modeStr = "V2";     break;
+                case SimEngineMode.Multi:  modeStr = "Multi";  break;
+                case SimEngineMode.Single: modeStr = "Single"; break;
+                default:                   modeStr = "?";      break;
+            }
             modeText.text = $"Room: <color=#FFD700>{currentRoomIndex}</color> | Mode: <color=#00FFFF>{modeStr}</color>";
         }
     }

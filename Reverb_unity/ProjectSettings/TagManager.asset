@@ -8,6 +8,8 @@ TagManager:
   - Wood
   - Glass
   - Fabric
+  - Metal
+  - Plastic
   - Channel_L
   - Channel_R
   layers:

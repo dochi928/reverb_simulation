@@ -2,13 +2,14 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System; // Math.Round 사용을 위해 추가
+using System;
 
 public class PresetManager : MonoBehaviour
 {
     public GameObject blockPrefab;
     public Transform objectParent;
     public MoveObject mover;
+    public RoomController roomController;
 
     [Header("Core Audio Objects")]
     public Transform ampAnchor;
@@ -32,14 +33,12 @@ public class PresetManager : MonoBehaviour
         if (!File.Exists(presetPath + "room_0.txt")) { SaveRoom(0); }
     }
 
-    // 이산화(Rounding) 처리를 위한 헬퍼 함수
     private string FormatVec3(Vector3 vec, int posDecimals, int rotDecimals)
     {
         float x = (float)Math.Round(vec.x, posDecimals);
         float y = (float)Math.Round(vec.y, posDecimals);
         float z = (float)Math.Round(vec.z, posDecimals);
-        
-        // 각도의 경우 rotDecimals가 0이면 정수로 저장됨 (1도 단위)
+
         if (rotDecimals == 0)
         {
             return $"{(int)Math.Round(vec.x)},{(int)Math.Round(vec.y)},{(int)Math.Round(vec.z)}";
@@ -51,13 +50,10 @@ public class PresetManager : MonoBehaviour
     {
         StringBuilder sb = new StringBuilder();
 
-        // 1. 앰프: 좌표 0.1단위(1), 각도 1도단위(0)
         sb.AppendLine($"AMP POS:{FormatVec3(ampAnchor.position, 1, 1)} ROT:{FormatVec3(ampAnchor.eulerAngles, 0, 0)}");
-        
-        // 2. 채널 앵커: 좌표 0.1단위(1), 각도 1도단위(0)
         sb.AppendLine($"CHA POS:{FormatVec3(channelAnchor.position, 1, 1)} ROT:{FormatVec3(channelAnchor.eulerAngles, 0, 0)}");
+        sb.AppendLine($"ROOM W:{Math.Round(roomController.GetWidth(), 1)} D:{Math.Round(roomController.GetDepth(), 1)}");
 
-        // 3. 일반 오브젝트
         foreach (Transform child in objectParent)
         {
             sb.Append($"OBJ TAG:{child.tag} ");
@@ -85,7 +81,7 @@ public class PresetManager : MonoBehaviour
             if (string.IsNullOrEmpty(trimmedLine)) continue;
 
             string[] parts = trimmedLine.Split(' ');
-            string header = parts[0]; 
+            string header = parts[0];
 
             if (header == "AMP")
             {
@@ -97,13 +93,19 @@ public class PresetManager : MonoBehaviour
                 channelAnchor.position = ParseVector3(parts[1].Split(':')[1]);
                 channelAnchor.eulerAngles = ParseVector3(parts[2].Split(':')[1]);
             }
+            else if (header == "ROOM")
+            {
+                float w = float.Parse(parts[1].Split(':')[1]);
+                float d = float.Parse(parts[2].Split(':')[1]);
+                roomController.SetRoomSize(w, d);
+            }
             else if (header == "OBJ")
             {
                 string tag = parts[1].Split(':')[1];
                 Vector3 pos = ParseVector3(parts[2].Split(':')[1]);
                 Vector3 rot = ParseVector3(parts[3].Split(':')[1]);
                 Vector3 sca = ParseVector3(parts[4].Split(':')[1]);
-                
+
                 GameObject newObj = Instantiate(blockPrefab, pos, Quaternion.Euler(rot), objectParent);
                 newObj.transform.localScale = sca;
                 newObj.tag = tag;
@@ -124,10 +126,12 @@ public class PresetManager : MonoBehaviour
         MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
         if (renderer != null && mover != null)
         {
-            if (tag == "Cement") renderer.material = mover.Cement;
-            else if (tag == "Fabric") renderer.material = mover.Fabric;
-            else if (tag == "Wood") renderer.material = mover.Wood;
-            else if (tag == "Glass") renderer.material = mover.Glass;
+            if (tag == "Cement")       renderer.material = mover.Cement;
+            else if (tag == "Fabric")  renderer.material = mover.Fabric;
+            else if (tag == "Wood")    renderer.material = mover.Wood;
+            else if (tag == "Glass")   renderer.material = mover.Glass;
+            else if (tag == "Plastic") renderer.material = mover.Plastic;
+            else if (tag == "Metal")   renderer.material = mover.Metal;
         }
     }
 }

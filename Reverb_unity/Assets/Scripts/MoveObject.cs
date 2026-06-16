@@ -5,14 +5,17 @@ public class MoveObject : MonoBehaviour
     public Transform ampAnchor;
     public Transform channel;
     GameObject selectedObject;
+    public RoomController roomController;
 
     public Material Cement;
     public Material Wood;
     public Material Fabric;
     public Material Glass;
+    public Material Plastic;
+    public Material Metal;
 
-    enum SelectMode { Object, Amp, Channel }
-    enum MaterialType { Cement, Wood, Fabric, Glass }
+    enum SelectMode { Object, Amp, Channel, Room }
+    enum MaterialType { Cement, Wood, Fabric, Glass, Plastic, Metal }
 
     SelectMode currentMode = SelectMode.Object;
 
@@ -38,6 +41,12 @@ public class MoveObject : MonoBehaviour
         currentMode = SelectMode.Channel;
     }
 
+    public void SelectRoom()
+    {
+        selectedObject = null;
+        currentMode = SelectMode.Room;
+    }
+
     public void Move(Vector3 dir)
     {
         switch (currentMode)
@@ -46,6 +55,9 @@ public class MoveObject : MonoBehaviour
             case SelectMode.Channel: channel.position += dir * moveStep; break;
             case SelectMode.Object:
                 if (selectedObject != null) selectedObject.transform.position += dir * moveStep;
+                break;
+            case SelectMode.Room:
+                roomController.ResizeRoom(dir.x * scaleStep, dir.z * scaleStep);
                 break;
         }
     }
@@ -64,7 +76,6 @@ public class MoveObject : MonoBehaviour
         }
     }
 
-    // --- X축 스케일링 분화 ---
     public void ScaleX(float dir)
     {
         if (currentMode != SelectMode.Object || selectedObject == null) return;
@@ -73,7 +84,6 @@ public class MoveObject : MonoBehaviour
         selectedObject.transform.localScale = scale;
     }
 
-    // --- Z축 스케일링 분화 ---
     public void ScaleZ(float dir)
     {
         if (currentMode != SelectMode.Object || selectedObject == null) return;
@@ -89,7 +99,7 @@ public class MoveObject : MonoBehaviour
         if (r == null) return;
 
         MaterialType currentType = GetMaterialType(selectedObject.tag);
-        MaterialType nextType = (MaterialType)(((int)currentType + 1) % 4);
+        MaterialType nextType = (MaterialType)(((int)currentType + 1) % 6);
         ApplyMaterial(nextType, selectedObject, r);
     }
 
@@ -97,10 +107,12 @@ public class MoveObject : MonoBehaviour
     {
         switch (tag)
         {
-            case "Wood": return MaterialType.Wood;
-            case "Fabric": return MaterialType.Fabric;
-            case "Glass": return MaterialType.Glass;
-            default: return MaterialType.Cement;
+            case "Wood":    return MaterialType.Wood;
+            case "Fabric":  return MaterialType.Fabric;
+            case "Glass":   return MaterialType.Glass;
+            case "Plastic": return MaterialType.Plastic;
+            case "Metal":   return MaterialType.Metal;
+            default:        return MaterialType.Cement;
         }
     }
 
@@ -108,10 +120,12 @@ public class MoveObject : MonoBehaviour
     {
         switch (type)
         {
-            case MaterialType.Cement: obj.tag = "Cement"; r.material = Cement; break;
-            case MaterialType.Wood: obj.tag = "Wood"; r.material = Wood; break;
-            case MaterialType.Fabric: obj.tag = "Fabric"; r.material = Fabric; break;
-            case MaterialType.Glass: obj.tag = "Glass"; r.material = Glass; break;
+            case MaterialType.Cement:  obj.tag = "Cement";  r.material = Cement;  break;
+            case MaterialType.Wood:    obj.tag = "Wood";    r.material = Wood;    break;
+            case MaterialType.Fabric:  obj.tag = "Fabric";  r.material = Fabric;  break;
+            case MaterialType.Glass:   obj.tag = "Glass";   r.material = Glass;   break;
+            case MaterialType.Plastic: obj.tag = "Plastic"; r.material = Plastic; break;
+            case MaterialType.Metal:   obj.tag = "Metal";   r.material = Metal;   break;
         }
     }
 }

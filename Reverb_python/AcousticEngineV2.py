@@ -1,11 +1,13 @@
-﻿import os
+import os
 import math
 import numpy as np
 import scipy.io.wavfile as wav
+from scipy.signal import lfilter
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
 
 class ReverbEngineGUI:
     def __init__(self):
@@ -23,7 +25,6 @@ class ReverbEngineGUI:
         self.direct_delay_sec_l = 0.0
         self.direct_delay_sec_r = 0.0
 
-        # 기본 경로 설정
         self.default_sim_dir   = r"C:\Users\82103\Documents\code\reverb\Reverb_unity\Assets\Results"
         self.default_audio_dir = r"C:\Users\82103\Desktop\성환 관련\Audio"
 
@@ -34,7 +35,7 @@ class ReverbEngineGUI:
         plt.subplots_adjust(bottom=0.3)
 
         status = self.get_status_text()
-        self.ax.set_title(f"Stereo Reverb Engine | {status}")
+        self.ax.set_title(f"Stereo Reverb Engine (Feedback) | {status}")
         self.line_l, = self.ax.plot([], [], lw=0.5, color='#1f77b4', label='Left', alpha=0.8)
         self.line_r, = self.ax.plot([], [], lw=0.5, color='#ff7f0e', label='Right', alpha=0.6)
         self.ax.legend(loc='upper right')
@@ -68,7 +69,6 @@ class ReverbEngineGUI:
         if not file_path or not os.path.exists(file_path):
             return None
 
-        # 형식 자동 감지를 위해 초기화
         self.is_v2 = False
         self.time_resolution = None
         self.vol_resolution = None
@@ -88,7 +88,6 @@ class ReverbEngineGUI:
                     if not line:
                         continue
 
-                    # V2: 좌/우 직접음 정보 분리
                     if line.startswith("DIRECT_INFO_L"):
                         self.is_v2 = True
                         direct_l_timeuS = float(line.split()[2])
@@ -97,12 +96,10 @@ class ReverbEngineGUI:
                         self.is_v2 = True
                         direct_r_timeuS = float(line.split()[2])
                         continue
-                    # V1: 단일 직접음 정보
                     if line.startswith("DIRECT_INFO"):
                         self.direct_delay_ms = float(line.split()[2])
                         continue
 
-                    # V2: 해상도 정보
                     if line.startswith("Time Resolution"):
                         self.time_resolution = float(line.split(':')[1].strip())
                         continue
@@ -122,7 +119,6 @@ class ReverbEngineGUI:
                         parts = line.split()
                         reverb_map[current_band][parts[0]].append((float(parts[1]), float(parts[2])))
 
-            # V2 후처리: timeuS -> sec, direct delay 계산
             if self.is_v2:
                 if not self.time_resolution:
                     self.time_resolution = 1.0
@@ -159,8 +155,8 @@ class ReverbEngineGUI:
             vol_div = self.vol_resolution
         else:
             direct_sec = {'L': self.direct_delay_ms / 1000.0, 'R': self.direct_delay_ms / 1000.0}
-            time_div = 1000.0  # ms -> sec
-            vol_div = 1000.0   # permil
+            time_div = 1000.0
+            vol_div = 1000.0
 
         for side in ['L', 'R']:
             l_data = {d[0]: d[1] for d in self.sim_data.get(l_key, {}).get(side, [])}
@@ -229,54 +225,125 @@ class ReverbEngineGUI:
             txt += f"{f:5d}Hz | Mag:{m:7.1f} | Ref:{d}\n"
         ax_txt.text(0, 1, txt, va='top', family='monospace', fontsize=9); plt.show()
 
-    def run_synthesis(self, event):
-        if self.dry_signal is None or self.sim_data is None: return
-
-        print("Creating Impulse Response...")
-        ir_len = int(self.fs * 0.5)
-        ir_l = np.zeros(ir_len)
-        ir_r = np.zeros(ir_len)
-
-        dir_idx = 0
-        ir_l[dir_idx] = 1.0
-        ir_r[dir_idx] = 1.0
-
+    # ------------------------------------------------------------------
+    # 피드백(재귀) 기반 합성
+    # ------------------------------------------------------------------
+    def build_gain_table(self, side):
+        """
+        모든 밴드의 (delay_samples, gain) 튜플을 모아서
+        delay_samples별로 gain을 합산한 sparse 테이블을 만든다.
+        같은 delay_samples에 여러 밴드/레이가 모이면 합산됨.
+        """
         if self.is_v2:
-            direct_sec = {'L': self.direct_delay_sec_l, 'R': self.direct_delay_sec_r}
+            direct_sec = self.direct_delay_sec_l if side == 'L' else self.direct_delay_sec_r
             time_div = self.time_resolution
             vol_div = self.vol_resolution
         else:
-            direct_sec = {'L': self.direct_delay_ms / 1000.0, 'R': self.direct_delay_ms / 1000.0}
+            direct_sec = self.direct_delay_ms / 1000.0
             time_div = 1000.0
             vol_div = 1000.0
 
-        for band_key in self.sim_data.keys():
-            for side in ['L', 'R']:
-                target_ir = ir_l if side == 'L' else ir_r
-                for t_raw, vol_raw in self.sim_data[band_key][side]:
-                    delay_sec = (t_raw / time_div) - direct_sec[side]
-                    idx = int(delay_sec * self.fs)
-                    if 0 <= idx < ir_len:
-                        target_ir[idx] += (vol_raw / vol_div)
-
+        gain_dict = {}  # delay_samples -> gain sum
         num_bands = len(self.sim_data.keys())
-        ir_l /= num_bands
-        ir_r /= num_bands
 
-        print("Applying Reverb via Convolution...")
-        from scipy.signal import fftconvolve
-        out_l = fftconvolve(self.dry_signal, ir_l, mode='full')
-        out_r = fftconvolve(self.dry_signal, ir_r, mode='full')
+        for band_key in self.sim_data.keys():
+            for t_raw, vol_raw in self.sim_data[band_key][side]:
+                delay_sec = (t_raw / time_div) - direct_sec
+                if delay_sec <= 0:
+                    continue
+                delay_samples = int(round(delay_sec * self.fs))
+                if delay_samples <= 0:
+                    continue
+                gain = (vol_raw / vol_div) / num_bands
+                gain_dict[delay_samples] = gain_dict.get(delay_samples, 0.0) + gain
+
+        if not gain_dict:
+            return np.array([], dtype=np.int64), np.array([], dtype=np.float64)
+
+        delays = np.array(sorted(gain_dict.keys()), dtype=np.int64)
+        gains = np.array([gain_dict[d] for d in delays], dtype=np.float64)
+        return delays, gains
+
+    def apply_feedback_reverb(self, dry, delays, gains, tail_seconds=1.0):
+        """
+        y[n] = x[n] + sum_k gains[k] * y[n - delays[k]]
+
+        IIR 차분방정식 형태:
+          a[0]*y[n] - sum_k gains[k]*y[n-delays[k]] = x[n]
+          a[0] = 1, a[delays[k]] = -gains[k]
+
+        scipy.signal.lfilter(b, a, x) 는
+          a[0]*y[n] = b[0]*x[n] - sum_{k>=1} a[k]*y[n-k]
+        형태이므로 그대로 매핑 가능.
+        """
+        if len(delays) == 0:
+            return dry.copy()
+
+        max_delay = int(delays.max())
+        tail_len = int(self.fs * tail_seconds)
+        pad_len = max_delay + tail_len
+
+        x = np.concatenate([dry, np.zeros(pad_len, dtype=np.float64)])
+
+        a = np.zeros(max_delay + 1, dtype=np.float64)
+        a[0] = 1.0
+        for d, g in zip(delays, gains):
+            a[d] -= g
+
+        b = np.array([1.0], dtype=np.float64)
+
+        y = lfilter(b, a, x)
+        return y
+
+    def run_synthesis(self, event):
+        if self.dry_signal is None or self.sim_data is None: return
+
+        print("Building feedback gain tables...")
+        delays_l, gains_l = self.build_gain_table('L')
+        delays_r, gains_r = self.build_gain_table('R')
+
+        print(f"  L: {len(delays_l)} taps, sum(gain)={gains_l.sum():.4f}, "
+              f"max(gain)={gains_l.max() if len(gains_l) else 0:.6f}")
+        print(f"  R: {len(delays_r)} taps, sum(gain)={gains_r.sum():.4f}, "
+              f"max(gain)={gains_r.max() if len(gains_r) else 0:.6f}")
+
+        # 안정성 체크 (발산 방지)
+        for side, gains in [('L', gains_l), ('R', gains_r)]:
+            total = gains.sum() if len(gains) else 0.0
+            if total >= 1.0:
+                print(f"  [경고] {side} 채널 gain 합계 {total:.4f} >= 1.0 -> 발산 위험, 자동 스케일 적용")
+                scale = 0.95 / total
+                if side == 'L':
+                    gains_l = gains_l * scale
+                else:
+                    gains_r = gains_r * scale
+
+        print("Applying recursive (feedback) reverb...")
+        out_l = self.apply_feedback_reverb(self.dry_signal, delays_l, gains_l, tail_seconds=1.5)
+        out_r = self.apply_feedback_reverb(self.dry_signal, delays_r, gains_r, tail_seconds=1.5)
+
+        max_len = max(len(out_l), len(out_r))
+        if len(out_l) < max_len:
+            out_l = np.pad(out_l, (0, max_len - len(out_l)))
+        if len(out_r) < max_len:
+            out_r = np.pad(out_r, (0, max_len - len(out_r)))
 
         out = np.stack([out_l, out_r], axis=1)
-        out /= (np.max(np.abs(out)) + 1e-6)
+
+        if not np.all(np.isfinite(out)):
+            print("  [오류] 출력에 NaN/Inf 발생 - gain 발산 가능성. 0으로 대체")
+            out = np.nan_to_num(out)
+
+        peak = np.max(np.abs(out))
+        if peak > 0:
+            out = out / (peak + 1e-9) * 0.98
 
         root = tk.Tk(); root.withdraw()
         path = filedialog.asksaveasfilename(
             initialdir=self.default_audio_dir,
             defaultextension=".wav",
             filetypes=[("WAV files", "*.wav")],
-            title="Save Synthesized Audio"
+            title="Save Synthesized Audio (Feedback)"
         )
         root.destroy()
 
@@ -289,9 +356,11 @@ class ReverbEngineGUI:
             self.ax.plot(t, out[:, 0], lw=0.5, color='#1f77b4', label='Left Reverb', alpha=0.7)
             self.ax.plot(t, out[:, 1], lw=0.5, color='#ff7f0e', label='Right Reverb', alpha=0.5)
             self.ax.legend()
+            self.ax.set_title(f"Feedback Reverb Output | {self.get_status_text()}")
             plt.draw()
 
     def show(self): plt.show()
+
 
 if __name__ == "__main__":
     app = ReverbEngineGUI(); app.show()
